@@ -1,0 +1,14 @@
+services:
+  testrail-mcp:
+    build: .
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    environment:
+      TESTRAIL_URL: ${TESTRAIL_URL}
+      TESTRAIL_EMAIL: ${TESTRAIL_EMAIL}
+      TESTRAIL_API_KEY: ${TESTRAIL_API_KEY}
+      TRANSPORT: ${TRANSPORT:-http}
+      PORT: ${PORT:-8000}
+    env_file:
+      - .env
+    restart: unless-stopped

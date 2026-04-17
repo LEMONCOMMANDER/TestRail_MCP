@@ -1,0 +1,26 @@
+[project]
+name = "testrail-mcp"
+version = "0.1.0"
+description = "A TestRail MCP server for managing test cases, plans, runs, and results"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=2.0",
+    "requests>=2.32",
+    "pydantic-settings>=2.0",
+]
+
+[project.scripts]
+testrail-mcp = "testrail_mcp.server:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/testrail_mcp"]
