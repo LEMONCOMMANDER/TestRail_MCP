@@ -1,5 +1,6 @@
 from fastmcp import FastMCP
 
+from testrail_mcp.client import TestRailClient
 from testrail_mcp.config import Settings
 
 mcp = FastMCP(
@@ -13,15 +14,41 @@ mcp = FastMCP(
     ),
 )
 
-# Tool modules are imported and registered here as each phase is completed.
-# Phase 3: cases, sections, suites, plans, runs, results (read)
-# Phase 4: cases, sections, suites, plans, runs, results (write)
-# Phase 5: file ingestion
-# Phase 6: workflow and metrics tools
+# Shared client instance — initialised in main() before the server starts.
+# Tools call get_client() to access it; it is never None during normal operation.
+client: TestRailClient | None = None
+
+
+def get_client() -> TestRailClient:
+    """Return the shared TestRailClient. Called by tool modules."""
+    if client is None:
+        raise RuntimeError("TestRailClient has not been initialised. Is the server running?")
+    return client
+
+
+# Tool modules are imported after mcp and get_client are defined so that the
+# @mcp.tool decorators and get_client references resolve without circular import
+# errors. Add new modules here as each phase is completed.
+from testrail_mcp.tools import (  # noqa: E402, F401
+    projects,
+    suites,
+    sections,
+    cases,
+    plans,
+    runs,
+    results,
+    milestones,
+)
 
 
 def main() -> None:
+    global client
     settings = Settings()
+    client = TestRailClient(
+        url=settings.testrail_url,
+        email=settings.testrail_email,
+        api_key=settings.testrail_api_key,
+    )
 
     if settings.transport == "stdio":
         mcp.run(transport="stdio")
