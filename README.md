@@ -2,6 +2,7 @@
 
 An MCP (Model Context Protocol) server for interacting with TestRail. Manage test cases, sections, suites, plans, runs, and results — or import entire test scenario files — directly from any MCP-compatible AI client.
 
+- NOTE: start server locally using: uv run python -m testrail_mcp
 ---
 
 ## Requirements
