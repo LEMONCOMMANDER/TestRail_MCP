@@ -41,6 +41,7 @@ from testrail_mcp.tools import (  # noqa: E402, F401
     importer,
     workflows,
 )
+from testrail_mcp import prompt_templates  # noqa: F401
 
 
 def main() -> None:
