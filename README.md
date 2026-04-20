@@ -18,7 +18,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server for Te
 
 ---
 
-## Quick Start (under 10 minutes)
+## Quick Start
 
 ### Step 1 — Get your credentials
 
@@ -28,6 +28,8 @@ You need three values:
 - Your TestRail instance URL (e.g. `https://yourorg.testrail.io`)
 - Your login email
 - Your API key
+
+**NOTE:** You will need to enable API access in TestRail. Admin > Site Settings > API > Enable API = ON
 
 ### Step 2 — Configure environment variables
 
