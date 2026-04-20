@@ -39,6 +39,7 @@ from testrail_mcp.tools import (  # noqa: E402, F401
     results,
     milestones,
     importer,
+    workflows,
 )
 
 
