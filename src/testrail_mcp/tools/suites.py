@@ -34,3 +34,57 @@ def get_suite(suite_id: int) -> dict:
     Returns id, name, description, and the project it belongs to.
     """
     return get_client().get(f"get_suite/{suite_id}")
+
+
+@mcp.tool
+def add_suite(
+    project_id: int,
+    name: str,
+    description: str | None = None,
+) -> dict:
+    """
+    Add a new test suite to a project.
+
+    Only meaningful for projects with suite_mode = 3 (multiple suites).
+    Use list_projects to confirm suite_mode before adding suites.
+
+    name is the display name for the suite (required).
+    """
+    body: dict = {"name": name}
+    if description is not None:
+        body["description"] = description
+
+    return get_client().post(f"add_suite/{project_id}", body)
+
+
+@mcp.tool
+def update_suite(
+    suite_id: int,
+    name: str | None = None,
+    description: str | None = None,
+) -> dict:
+    """
+    Update an existing test suite's name or description.
+
+    Only fields provided will be changed; omit any field to leave it unchanged.
+    """
+    body: dict = {}
+    if name is not None:
+        body["name"] = name
+    if description is not None:
+        body["description"] = description
+
+    return get_client().post(f"update_suite/{suite_id}", body)
+
+
+@mcp.tool
+def delete_suite(suite_id: int) -> dict:
+    """
+    Permanently delete a test suite and all sections and cases it contains.
+
+    WARNING: This cannot be undone. All test cases in the suite will be
+    deleted and removed from all runs and plans that reference them.
+
+    Only use this in test/sandbox projects.
+    """
+    return get_client().post(f"delete_suite/{suite_id}")
