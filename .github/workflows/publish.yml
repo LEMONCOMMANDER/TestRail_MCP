@@ -1,0 +1,55 @@
+name: Publish Docker Image
+
+# Triggers:
+#   - Push to main      → builds and tags image as "latest"
+#   - Push a version tag (v1.2.3) → also tags image as "1.2.3" and "1.2"
+#
+# The GITHUB_TOKEN is automatically provided by GitHub — no secrets to configure.
+# The image is published to: ghcr.io/OWNER/testrail-mcp
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-and-push:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write   # required to push to GHCR
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata (tags and labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            # Branch push → :latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Version tag v1.2.3 → :1.2.3 and :1.2
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

@@ -24,6 +24,7 @@ build/
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 
@@ -31,5 +32,3 @@ build/
 .DS_Store
 Thumbs.db
 
-#configs
-.configs/mcp.json

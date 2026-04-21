@@ -1,5 +1,8 @@
 # TestRail MCP Server
 
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Build](https://github.com/jtroop/TestRail_MCP/actions/workflows/publish.yml/badge.svg)
+
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server for TestRail. Connect any MCP-compatible AI client — Claude Desktop, Cursor, VS Code — and manage your entire TestRail workflow through natural language.
 
 **What you can do:**
@@ -43,6 +46,7 @@ Edit `.env` and fill in your values:
 TESTRAIL_URL=https://yourorg.testrail.io
 TESTRAIL_EMAIL=your@email.com
 TESTRAIL_API_KEY=your_api_key_here
+TRANSPORT=stdio
 ```
 
 | Variable | Required | Default | Description |
@@ -50,27 +54,43 @@ TESTRAIL_API_KEY=your_api_key_here
 | `TESTRAIL_URL` | ✅ | — | TestRail instance URL, no trailing slash |
 | `TESTRAIL_EMAIL` | ✅ | — | Your TestRail login email |
 | `TESTRAIL_API_KEY` | ✅ | — | Your TestRail API key |
-| `TRANSPORT` | — | `http` | `http` for Docker/remote, `stdio` for Claude Desktop/Cursor |
+| `TRANSPORT` | — | `http` | `stdio` for local AI clients, `http` for Docker |
 | `PORT` | — | `8000` | HTTP server port (only used when `TRANSPORT=http`) |
+
+The server reads this file automatically at startup — you never need to put credentials anywhere else.
+
+> **Already have a `.env` in your project?** If you're adding the TestRail MCP server to an existing project that already has a `.env`, just append the four variables above to it. `docker compose` and the local server both pick up `.env` from the working directory.
 
 If any required variable is missing, the server will exit immediately with a clear error message naming exactly which variable is not set.
 
 ### Step 3 — Run the server
 
-**Option A — Local with uv (recommended for Claude Desktop / Cursor)**
+**Option A — Local (STDIO) — for VS Code, Cursor, JetBrains, Claude Desktop**
 
 ```bash
 uv sync
-TRANSPORT=stdio uv run python -m testrail_mcp
+uv run python -m testrail_mcp --ide <your_ide>
 ```
+See MCP Client Configuration section below for IDE-specific setup instructions. Supported IDE values are: `vscode`, `cursor`, `jetbrains`.
 
-Or set `TRANSPORT=stdio` in your `.env` file and run:
+
+The server is managed by your AI client — you don't leave this running in a terminal. The setup script in Step 4 tells your client how to launch it.
+
+**Option B — Docker pre-built image**
+
+No clone required. Pull and run directly:
 
 ```bash
-uv run python -m testrail_mcp
+# Create a .env with your credentials (see Step 2)
+docker run -d \
+  --env-file .env \
+  -p 8000:8000 \
+  ghcr.io/jtroop/testrail-mcp:latest
 ```
 
-**Option B — Docker (recommended for HTTP/shared use)**
+The server starts at `http://localhost:8000/mcp`. Point your MCP client at that URL — no setup script needed.
+
+**Option C — Docker build from source**
 
 ```bash
 docker compose up --build
@@ -80,83 +100,64 @@ The server starts at `http://localhost:8000/mcp`.
 
 ### Step 4 — Connect your AI client
 
-See [MCP Client Configuration](#mcp-client-configuration) below.
+> **Docker users** — skip this step. Your server is already running at `http://localhost:8000/mcp`. See [HTTP (Docker)](#http-docker--any-mcp-client) below to configure your client.
+
+For local (STDIO) use, run the setup script once after cloning. It writes the correct config file for your AI client — no manual JSON editing required:
+
+```bash
+# Interactive (prompts you to pick your IDE):
+uv run python scripts/setup_mcp.py
+
+# Or pass your IDE directly:
+uv run python scripts/setup_mcp.py --ide vscode
+uv run python scripts/setup_mcp.py --ide cursor
+uv run python scripts/setup_mcp.py --ide jetbrains
+uv run python scripts/setup_mcp.py --ide claude
+```
+
+Credentials are **not** written into the config file — the server reads them from your `.env` at runtime.
+
+| `--ide` value | File written | Notes |
+|---|---|---|
+| `vscode` | `.vscode/mcp.json` | Auto-discovered when you open the project |
+| `cursor` | `.cursor/mcp.json` | Auto-discovered when you open the project |
+| `jetbrains` | `.idea/mcp.json` | Requires AI Assistant plugin (see below) |
+| `claude` | `~/Library/Application Support/Claude/claude_desktop_config.json` | Merges safely with existing config |
+
+These files are gitignored — they contain your local absolute path and are not meant to be committed.
 
 ---
 
 ## MCP Client Configuration
 
-### Claude Desktop — STDIO (local uv)
+### VS Code (GitHub Copilot)
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+Run `uv run python scripts/setup_mcp.py --ide vscode`. This writes `.vscode/mcp.json`, which VS Code auto-discovers when you open the project folder.
 
-```json
-{
-  "mcpServers": {
-    "testrail": {
-      "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/TestRail_MCP", "python", "-m", "testrail_mcp"],
-      "env": {
-        "TESTRAIL_URL": "https://yourorg.testrail.io",
-        "TESTRAIL_EMAIL": "your@email.com",
-        "TESTRAIL_API_KEY": "your_api_key_here",
-        "TRANSPORT": "stdio"
-      }
-    }
-  }
-}
-```
+No credentials in the config — VS Code launches the server with `uv run --directory <project>`, which sets the working directory so the `.env` file is loaded automatically.
 
-Replace `/absolute/path/to/TestRail_MCP` with the actual path to this repository.
+### Cursor
 
-### Cursor — STDIO (local uv)
+Run `uv run python scripts/setup_mcp.py --ide cursor`. This writes `.cursor/mcp.json`, which Cursor auto-discovers when you open the project folder.
 
-Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
+### JetBrains (RubyMine / IntelliJ / PyCharm)
 
-```json
-{
-  "mcpServers": {
-    "testrail": {
-      "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/TestRail_MCP", "python", "-m", "testrail_mcp"],
-      "env": {
-        "TESTRAIL_URL": "https://yourorg.testrail.io",
-        "TESTRAIL_EMAIL": "your@email.com",
-        "TESTRAIL_API_KEY": "your_api_key_here",
-        "TRANSPORT": "stdio"
-      }
-    }
-  }
-}
-```
+Run `uv run python scripts/setup_mcp.py --ide jetbrains`. This writes `.idea/mcp.json`.
 
-### VS Code (GitHub Copilot) — STDIO
+Requires the **AI Assistant** plugin with MCP support enabled: **Settings → AI Assistant → Model Context Protocol → Enable**.
 
-Add to your VS Code `settings.json`:
+### Claude Desktop
 
-```json
-{
-  "mcp": {
-    "servers": {
-      "testrail": {
-        "type": "stdio",
-        "command": "uv",
-        "args": ["run", "--directory", "/absolute/path/to/TestRail_MCP", "python", "-m", "testrail_mcp"],
-        "env": {
-          "TESTRAIL_URL": "https://yourorg.testrail.io",
-          "TESTRAIL_EMAIL": "your@email.com",
-          "TESTRAIL_API_KEY": "your_api_key_here",
-          "TRANSPORT": "stdio"
-        }
-      }
-    }
-  }
-}
-```
+Run `uv run python scripts/setup_mcp.py --ide claude`. This writes (or merges into) the global Claude Desktop config at:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Restart Claude Desktop after running the script.
 
 ### HTTP (Docker) — Any MCP client
 
-Start the server with `docker compose up --build`, then point your client at:
+Start the server with `docker compose up` (or `docker run` as shown above), then configure your MCP client to connect at:
 
 ```
 http://localhost:8000/mcp
@@ -173,6 +174,35 @@ For clients that take a URL directly:
   }
 }
 ```
+
+No setup script needed for Docker — the server is already running and credentials are supplied via `--env-file .env`.
+
+---
+
+## Adding to an Existing docker-compose
+
+If you already have a `docker-compose.yml` for another project and want the TestRail MCP server to start alongside it, add this service block:
+
+```yaml
+services:
+  # ... your existing services ...
+
+  testrail-mcp:
+    image: ghcr.io/jtroop/testrail-mcp:latest
+    ports:
+      - "8000:8000"
+    environment:
+      TESTRAIL_URL: ${TESTRAIL_URL}
+      TESTRAIL_EMAIL: ${TESTRAIL_EMAIL}
+      TESTRAIL_API_KEY: ${TESTRAIL_API_KEY}
+      TRANSPORT: http
+      PORT: 8000
+    restart: unless-stopped
+```
+
+Then add the three `TESTRAIL_*` variables to your existing `.env` file. No other changes needed — `docker compose up` will start the TestRail server alongside your app.
+
+Configure your MCP client to connect via `http://localhost:8000/mcp` using the HTTP config block above.
 
 ---
 
@@ -325,4 +355,16 @@ The server ships with four built-in prompt templates. Select them from your AI c
 | 6 | Workflow & metrics tools | ✅ Complete |
 | 7 | Prompt templates | ✅ Complete |
 | 8 | Polish & publish | ✅ Complete |
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a full history of releases and changes.
+
+---
+
+## License
+
+[MIT](LICENSE) — free to use, modify, and distribute. See the LICENSE file for details.
 
