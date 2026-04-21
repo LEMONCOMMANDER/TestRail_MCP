@@ -30,7 +30,7 @@ SUPPORTED_IDES = ["vscode", "cursor", "jetbrains", "claude"]
 IDE_LABELS = {
     "vscode": "VS Code (GitHub Copilot)",
     "cursor": "Cursor",
-    "jetbrains": "JetBrains (RubyMine / IntelliJ / PyCharm)",
+    "jetbrains": "JetBrains (any IDE — RubyMine, IntelliJ, PyCharm, WebStorm, etc.)",
     "claude": "Claude Desktop",
 }
 
@@ -109,7 +109,8 @@ def configure_jetbrains() -> None:
     _safe_write(dest, {"mcpServers": {"testrail": _server_block()}})
     print(
         "  JetBrains AI Assistant will auto-discover this.\n"
-        "  Requires: Settings → AI Assistant → Model Context Protocol → Enable."
+        "  Requires: JetBrains IDE 2024.3+ with AI Assistant plugin.\n"
+        "  Settings → Tools → AI Assistant → MCP Servers."
     )
 
 
@@ -153,19 +154,6 @@ CONFIGURATORS = {
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-
-def _pick_ide_interactively() -> str:
-    print("\nWhich AI client are you configuring?\n")
-    for i, (key, label) in enumerate(IDE_LABELS.items(), 1):
-        print(f"  {i}. {label}  [{key}]")
-    print()
-    while True:
-        raw = input(f"Enter a number [1–{len(IDE_LABELS)}]: ").strip()
-        if raw.isdigit() and 1 <= int(raw) <= len(IDE_LABELS):
-            return list(IDE_LABELS.keys())[int(raw) - 1]
-        print(f"  Please enter a number between 1 and {len(IDE_LABELS)}.")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Write the MCP config file for your AI client.",
@@ -182,13 +170,23 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if not args.ide:
+        parser.error(
+            "the --ide flag is required.\n\n"
+            "Usage examples:\n"
+            "  uv run python scripts/setup_mcp.py --ide vscode\n"
+            "  uv run python scripts/setup_mcp.py --ide cursor\n"
+            "  uv run python scripts/setup_mcp.py --ide jetbrains\n"
+            "  uv run python scripts/setup_mcp.py --ide claude"
+        )
+
     print("╔══════════════════════════════════════════╗")
     print("║   TestRail MCP — Client Setup Script     ║")
     print("╚══════════════════════════════════════════╝")
     print(f"\n  Project root: {PROJECT_ROOT}")
     print("  Credentials : read from .env at runtime (not stored in config)\n")
 
-    ide = args.ide or _pick_ide_interactively()
+    ide = args.ide
 
     print(f"\nConfiguring for: {IDE_LABELS[ide]}")
     CONFIGURATORS[ide]()

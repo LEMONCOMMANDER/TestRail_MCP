@@ -140,11 +140,11 @@ No credentials in the config — VS Code launches the server with `uv run --dire
 
 Run `uv run python scripts/setup_mcp.py --ide cursor`. This writes `.cursor/mcp.json`, which Cursor auto-discovers when you open the project folder.
 
-### JetBrains (RubyMine / IntelliJ / PyCharm)
+### JetBrains (any IDE — RubyMine, IntelliJ, PyCharm, WebStorm, etc.)
 
 Run `uv run python scripts/setup_mcp.py --ide jetbrains`. This writes `.idea/mcp.json`.
 
-Requires the **AI Assistant** plugin with MCP support enabled: **Settings → AI Assistant → Model Context Protocol → Enable**.
+All JetBrains IDEs use the same `.idea/` project folder, so this config works across every JetBrains product. Requires JetBrains IDE **2024.3+** with the AI Assistant plugin: **Settings → Tools → AI Assistant → MCP Servers**. See the [JetBrains MCP documentation](https://www.jetbrains.com/help/idea/mcp-server.html) for details.
 
 ### Claude Desktop
 
