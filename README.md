@@ -85,7 +85,7 @@ No clone required. Pull and run directly:
 docker run -d \
   --env-file .env \
   -p 8000:8000 \
-  ghcr.io/jtroop/testrail-mcp:latest
+  ghcr.io/lemoncommander/testrail-mcp:latest
 ```
 
 The server starts at `http://localhost:8000/mcp`. Point your MCP client at that URL — no setup script needed.
@@ -188,7 +188,7 @@ services:
   # ... your existing services ...
 
   testrail-mcp:
-    image: ghcr.io/jtroop/testrail-mcp:latest
+    image: ghcr.io/lemoncommander/testrail-mcp:latest
     ports:
       - "8000:8000"
     environment:

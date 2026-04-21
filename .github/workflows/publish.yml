@@ -4,8 +4,13 @@ name: Publish Docker Image
 #   - Push to main      → builds and tags image as "latest"
 #   - Push a version tag (v1.2.3) → also tags image as "1.2.3" and "1.2"
 #
-# The GITHUB_TOKEN is automatically provided by GitHub — no secrets to configure.
-# The image is published to: ghcr.io/OWNER/testrail-mcp
+# Publishes to two registries:
+#   - ghcr.io/OWNER/testrail-mcp  (GitHub Container Registry)
+#   - DOCKERHUB_USERNAME/testrail-mcp  (Docker Hub)
+#
+# Required secrets (Settings → Secrets → Actions):
+#   DOCKERHUB_USERNAME  — your Docker Hub username
+#   DOCKERHUB_TOKEN     — Docker Hub access token (hub.docker.com → Account Settings → Security)
 
 on:
   push:
@@ -34,11 +39,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Extract image metadata (tags and labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: |
+            ghcr.io/${{ github.repository }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/testrail-mcp
           tags: |
             # Branch push → :latest
             type=raw,value=latest,enable={{is_default_branch}}
