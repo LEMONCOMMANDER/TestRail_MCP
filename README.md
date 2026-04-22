@@ -7,9 +7,11 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server for Te
 
 **What you can do:**
 - Import test scenarios from Gherkin, Markdown, or numbered-list files directly into TestRail
+- Import a structured markdown document and have sections auto-created from headings in one call
 - Create, update, and delete test cases, sections, suites, runs, plans, and results
 - Generate health reports, coverage metrics, and milestone progress summaries
 - Use built-in prompt templates to guide the AI through common workflows without manual tool calls
+- Reference `instructions.md` at the start of any agent prompt for instant tool/prompt orientation
 
 ---
 
@@ -208,18 +210,30 @@ Configure your MCP client to connect via `http://localhost:8000/mcp` using the H
 
 ## Prompt Templates
 
-The server ships with four built-in prompt templates. Select them from your AI client's prompt picker to start a guided workflow.
+The server ships with five built-in prompt templates. Select them from your AI client's prompt picker to start a guided workflow.
 
 | Prompt | Description |
 |---|---|
-| `import_test_scenarios` | Import a Gherkin, Markdown, or numbered-list file into TestRail. Auto-detects the format, confirms the target section, and reports results. |
+| `getting_started` | **New.** Orientation guide — lists all tools, prompts, and decision rules. Call this first, or reference `instructions.md` if working in STDIO mode. |
+| `import_test_scenarios` | Import a Gherkin, Markdown, or numbered-list file into TestRail. Auto-detects format, confirms target, and reports results. For structured markdown with sections, steers you to `import_from_hierarchy`. |
 | `generate_project_report` | Generate a structured health report for a project — pass rate, coverage, and milestone progress in one response. |
 | `triage_test_failures` | Analyse a test run's results and produce a prioritised triage summary with recommended actions. |
 | `create_test_cases_from_description` | Convert a natural-language feature description into BDD test cases, review them with you, then import to TestRail. |
 
+### Recommended prompt starter
+
+For any task involving this server, begin your prompt with:
+
+```
+Reference instructions.md (or call the getting_started MCP prompt if unavailable).
+Then: [your task here]
+```
+
+This loads the full tool/prompt index before the agent picks an approach, reducing iteration and avoiding ad-hoc tool chains.
+
 **Example usage (no prompt template needed):**
 
-> *"Import this feature file into the Login Tests section of My App"*
+> *"Reference instructions.md, then import testing_scenarios.md into the cortado_clone project"*
 > *"Give me a full health report for the Sample Project"*
 > *"How did the Sprint 5 regression run go?"*
 
@@ -301,7 +315,8 @@ The server ships with four built-in prompt templates. Select them from your AI c
 | Tool | Description |
 |---|---|
 | `import_from_file` | Parse and import scenarios by section ID (max 500KB) |
-| `import_scenarios` | Import scenarios using project/suite/section names or IDs |
+| `import_scenarios` | Import scenarios using project/suite/section names or IDs — flat file into one existing section |
+| `import_from_hierarchy` | **New.** Import a structured markdown document — auto-creates `##`/`###` headings as nested sections and imports cases in one call |
 
 ### Metrics & Reports
 | Tool | Description |
@@ -319,8 +334,28 @@ The server ships with four built-in prompt templates. Select them from your AI c
 | Format | `fmt` value | Description |
 |---|---|---|
 | Gherkin / BDD | `gherkin` | `Feature` / `Scenario` / `Given` / `When` / `Then` blocks |
-| Markdown | `markdown` | `##` or `###` headings as titles, body as BDD steps or description |
+| Markdown | `markdown` | `##`/`###` headings **and `**bold-only lines**`** as titles, body as BDD steps or description |
 | Numbered list | `numbered` | `1. Title` lines as case titles (no step content) |
+
+### Choosing the right import tool
+
+```
+Does your markdown file use ## / ### headings as section names (not case titles)?
+  YES → use import_from_hierarchy  (auto-creates sections, imports cases in one call)
+  NO  → use import_scenarios       (flat list of cases into one existing section)
+```
+
+---
+
+## Testing
+
+The project ships with a unit test suite covering the parsers and the `import_from_hierarchy` workflow. No live TestRail connection is required.
+
+```bash
+uv run pytest tests/ -v
+```
+
+54 tests across two files — see [`tests/TEST_COVERAGE.md`](tests/TEST_COVERAGE.md) for a full breakdown of what each test covers.
 
 ---
 
