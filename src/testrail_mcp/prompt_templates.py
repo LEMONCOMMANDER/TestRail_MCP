@@ -7,9 +7,10 @@ and behavioral rules so the LLM produces consistent, correct results without
 needing detailed guidance from the user every time.
 
 Prompts:
-  import_test_scenarios          — import a file of test scenarios into TestRail
-  generate_project_report        — produce a readable metrics report for a project
-  triage_test_failures           — analyse failures in a test run and suggest actions
+  getting_started                    — orientation guide; read this before any task
+  import_test_scenarios              — import a file of test scenarios into TestRail
+  generate_project_report            — produce a readable metrics report for a project
+  triage_test_failures               — analyse failures in a test run and suggest actions
   create_test_cases_from_description — convert a feature description into BDD cases
 """
 
@@ -18,8 +19,123 @@ from testrail_mcp.server import mcp
 
 @mcp.prompt(
     description=(
+        "Full orientation guide for this MCP server — tools, prompts, import formats, "
+        "BDD rules, and decision guides. Call this before starting any task if you do "
+        "not have access to instructions.md in the project root."
+    )
+)
+def getting_started() -> str:
+    """
+    Returns the complete agent instructions for this MCP server.
+    Equivalent to reading instructions.md — use this when filesystem access is unavailable
+    (e.g. connecting via Docker/HTTP transport).
+    """
+    return """\
+# TestRail MCP — Agent Instructions
+
+This is the single source of truth for any agent using the TestRail MCP server.
+Read this before starting any task. If you have filesystem access, `instructions.md`
+in the project root contains the same content.
+
+---
+
+## Available Prompts
+
+| Prompt | Use when |
+|--------|----------|
+| `getting_started` | You need this full reference (you're reading it) |
+| `import_test_scenarios` | Importing a file of scenarios into TestRail |
+| `generate_project_report` | Health/coverage/milestone report for a project |
+| `triage_test_failures` | Analysing pass/fail results for a test run |
+| `create_test_cases_from_description` | Writing BDD scenarios from a description then importing |
+
+---
+
+## Available Tools
+
+### Discovery — call before any write operation
+- `list_projects` — list all projects; shows suite_mode (1=single, 3=multi-suite)
+- `list_suites` — list suites (required when suite_mode=3)
+- `list_sections` — list sections/folders in a project or suite
+- `list_cases` — list test cases in a section
+- `list_runs` / `list_plans` / `list_milestones`
+
+### Importing Scenarios
+- `import_from_hierarchy` — **preferred for structured markdown**
+  File has `##`/`###` headings that should become TestRail sections.
+  Auto-creates the section tree and imports all cases in one call.
+  Case titles detected from `####` headings and `**bold-only lines**`.
+
+- `import_scenarios` — flat file into one existing section
+  Accepts Gherkin, markdown (##/### or **bold** as titles), or numbered format.
+
+**Decision rule:**
+```
+Do the ## / ### headings represent section names (not case titles)?
+  YES → import_from_hierarchy
+  NO  → import_scenarios
+```
+
+### Writing
+- `add_section`, `add_case`, `update_case`, `delete_case`
+- `add_run`, `add_plan`
+- `add_result`, `add_results_for_cases`
+
+### Metrics
+- `get_run_summary` — stats for a single run
+- `get_milestone_progress` — completion across all runs in a milestone
+- `get_project_health` — aggregate health across recent runs
+- `get_coverage_report` — case coverage for a project or suite
+- `get_full_project_report` — all metrics in one call
+
+---
+
+## Import Formats
+
+| Format | `fmt` value | Title detection |
+|--------|-------------|-----------------|
+| Gherkin | `"gherkin"` | `Scenario:` / `Scenario Outline:` |
+| Markdown | `"markdown"` | `##`/`###` headings and `**bold-only lines**` |
+| Numbered | `"numbered"` | `1.`, `2.`, etc. |
+
+---
+
+## BDD Field Rules — Critical
+
+- Template ID: `4` (Behaviour Driven Development)
+- Field key: `custom_testrail_bdd_scenario`
+- Value: JSON array `[{"content": "Given ...\\nWhen ...\\nThen ..."}]`
+- One case = one array element with the full step block
+- Never pass a plain string — the API returns 400
+- Import tools handle this automatically; only relevant if calling `add_case` directly
+
+---
+
+## General Rules
+
+1. Always discover (list/get) before writing — confirm IDs first
+2. Prefer names over IDs in tool calls — workflow tools accept strings
+3. Preserve wording when importing — never paraphrase
+4. Report failures clearly — never silently skip errors
+5. One test case per scenario — never merge scenarios
+
+---
+
+## Recommended Prompt Starter
+
+```
+Reference instructions.md (or call the getting_started MCP prompt if unavailable).
+Then: [your task here]
+```
+"""
+
+
+@mcp.prompt(
+    description=(
         "Import test scenarios from a file into TestRail. "
-        "Handles Gherkin (.feature), Markdown, and numbered-list formats."
+        "Handles Gherkin (.feature), Markdown, and numbered-list formats. "
+        "For structured markdown with ## / ### section headings, use the "
+        "import_from_hierarchy tool instead — it auto-creates sections."
     )
 )
 def import_test_scenarios(
@@ -52,7 +168,20 @@ You are about to import the following test content into TestRail.
 {file_content}
 --- FILE CONTENT END ---
 
-## Your task
+## Choose the right import tool
+
+**First, inspect the file structure:**
+
+- If the document uses `##` or `###` headings as **section names** (not scenario
+  titles), and you want those headings to become TestRail sections with cases
+  nested inside them → use **`import_from_hierarchy`** instead of this workflow.
+  It auto-creates the section tree and imports cases in one call.
+
+- If the file is a flat list of scenarios all going into **one existing section**
+  (headings are scenario titles, not folder names) → continue with the steps below
+  using **`import_scenarios`**.
+
+## Your task (flat import via import_scenarios)
 
 Follow these steps **in order**. Do not skip any step.
 

@@ -5,7 +5,8 @@ Phase 6: Higher-level orchestration tools that chain atomic tools for
 known workflows, plus metrics/reporting tools.
 
 Tools:
-  import_scenarios         — name/ID-based import orchestration
+  import_scenarios         — name/ID-based flat import into a single section
+  import_from_hierarchy    — structured markdown import with auto section creation
   get_run_summary          — pass/fail/coverage stats for a run
   get_milestone_progress   — completion metrics for a milestone
   get_project_health       — aggregate health across recent runs
@@ -17,7 +18,7 @@ from __future__ import annotations
 
 from testrail_mcp.server import mcp, get_client
 from testrail_mcp.client import TestRailClient
-from testrail_mcp.parsers import parse
+from testrail_mcp.parsers import parse, parse_hierarchy
 
 _BATCH_SIZE = 25
 _BDD_TEMPLATE_ID = 4
@@ -333,7 +334,200 @@ def import_scenarios(
     }
 
 
-# ── Metrics tools ──────────────────────────────────────────────────────────────
+@mcp.tool
+def import_from_hierarchy(
+    content: str,
+    project: int | str,
+    suite: int | str | None = None,
+    parent_section: int | str | None = None,
+    type_id: int | None = None,
+    priority_id: int | None = None,
+) -> dict:
+    """
+    Import a structured markdown document into TestRail, auto-creating sections.
+
+    Reads the heading hierarchy from the document and creates matching sections
+    in TestRail before importing the test cases beneath each heading. This is
+    the preferred tool when your markdown file has organised sections — it
+    eliminates the need to manually create sections and call import_scenarios
+    per section.
+
+    Heading mapping:
+      ## heading  → creates a top-level TestRail section
+      ### heading → creates a child section nested under the nearest ##
+
+    Case titles are detected from:
+      #### headings       — explicit case title marker
+      **bold-only lines** — common in exported or hand-written docs
+
+    BDD steps (Given/When/Then/And/But) under a case title are captured as
+    the BDD scenario content.
+
+    content: the full markdown text (plain text only, max 500KB).
+
+    project: project ID (int) or exact project name (str).
+      Example: 3  or  "My Web App"
+
+    suite: suite ID (int) or exact suite name (str).
+      Required for multi-suite projects (suite_mode=3). Omit for single-suite.
+      Example: 12  or  "Regression Suite"
+
+    parent_section: optional section ID (int) or name (str) to nest all
+      created sections under. Omit to create at the root of the suite.
+
+    type_id: optional case type for all created cases.
+      1=Automated, 2=Functionality, 4=Regression, 5=Smoke & Sanity
+
+    priority_id: optional priority for all created cases.
+      1=Low, 2=Medium, 3=High, 4=Critical
+
+    Returns a summary with:
+      - resolved: project/suite names and IDs that were found
+      - sections_created: list of {name, id, parent_id} for each section created
+      - total_parsed: total number of cases found across all sections
+      - total_created: total number of cases successfully created
+      - by_section: per-section breakdown with case list
+      - failed: list of {title, section, error} for any failures
+    """
+    content_bytes = len(content.encode("utf-8"))
+    if content_bytes > _MAX_CONTENT_BYTES:
+        raise ValueError(
+            f"Content too large ({content_bytes // 1024}KB). "
+            f"Maximum is {_MAX_CONTENT_BYTES // 1024}KB. "
+            "Split the file into smaller sections and import each separately."
+        )
+    if "\x00" in content:
+        raise ValueError(
+            "Content appears to be binary. Only plain text files are supported."
+        )
+
+    hierarchy = parse_hierarchy(content)
+    if not hierarchy:
+        return {
+            "sections_created": [],
+            "total_parsed": 0,
+            "total_created": 0,
+            "by_section": [],
+            "failed": [],
+            "message": (
+                "No sections or cases found. "
+                "Ensure the document uses ## / ### headings for sections and "
+                "#### headings or **bold lines** for case titles."
+            ),
+        }
+
+    client = get_client()
+    project_id, project_name = _resolve_project(client, project)
+    suite_id, suite_name = _resolve_suite(client, project_id, suite)
+
+    # Resolve optional parent section
+    parent_section_id: int | None = None
+    if parent_section is not None:
+        parent_section_id, _ = _resolve_section(client, project_id, suite_id, parent_section)
+
+    # Create sections in document order, tracking name → id for parent linking
+    section_id_map: dict[str, int | None] = {}
+    sections_created = []
+
+    for node in hierarchy:
+        pid = (
+            parent_section_id
+            if node.level == 2
+            else section_id_map.get(node.parent_name or "")
+        )
+
+        body: dict = {"name": node.name}
+        if suite_id is not None:
+            body["suite_id"] = suite_id
+        if pid is not None:
+            body["parent_id"] = pid
+
+        try:
+            new_section = client.post(f"add_section/{project_id}", body)
+            section_id_map[node.name] = new_section["id"]
+            sections_created.append({
+                "name": new_section["name"],
+                "id": new_section["id"],
+                "parent_id": pid,
+            })
+        except Exception as e:
+            section_id_map[node.name] = None
+            sections_created.append({
+                "name": node.name,
+                "id": None,
+                "error": str(e),
+            })
+
+    # Import cases into each section
+    total_parsed = sum(len(n.cases) for n in hierarchy)
+    total_created = 0
+    failed: list[dict] = []
+    by_section: list[dict] = []
+
+    for node in hierarchy:
+        sid = section_id_map.get(node.name)
+        if sid is None:
+            for case in node.cases:
+                failed.append({
+                    "title": case.title,
+                    "section": node.name,
+                    "error": "Section creation failed — cannot import cases",
+                })
+            continue
+
+        section_cases: list[dict] = []
+        for i in range(0, len(node.cases), _BATCH_SIZE):
+            for scenario in node.cases[i : i + _BATCH_SIZE]:
+                try:
+                    case_body: dict = {
+                        "title": scenario.title,
+                        "template_id": _BDD_TEMPLATE_ID,
+                    }
+                    if scenario.bdd_content:
+                        case_body[_BDD_FIELD_KEY] = [{"content": scenario.bdd_content}]
+                    elif scenario.description:
+                        case_body["custom_preconds"] = scenario.description
+                    if type_id is not None:
+                        case_body["type_id"] = type_id
+                    if priority_id is not None:
+                        case_body["priority_id"] = priority_id
+
+                    result = client.post(f"add_case/{sid}", case_body)
+                    section_cases.append({"id": result["id"], "title": result["title"]})
+                    total_created += 1
+                except Exception as e:
+                    failed.append({
+                        "title": scenario.title,
+                        "section": node.name,
+                        "error": str(e),
+                    })
+
+        by_section.append({
+            "section_name": node.name,
+            "section_id": sid,
+            "cases_parsed": len(node.cases),
+            "cases_created": len(section_cases),
+            "cases": section_cases,
+        })
+
+    return {
+        "resolved": {
+            "project": project_name,
+            "project_id": project_id,
+            "suite": suite_name,
+            "suite_id": suite_id,
+        },
+        "sections_created": sections_created,
+        "total_parsed": total_parsed,
+        "total_created": total_created,
+        "by_section": by_section,
+        "failed": failed,
+        "message": (
+            f"Created {len(sections_created)} sections and {total_created} of "
+            f"{total_parsed} cases in '{project_name}'."
+            + (f" {len(failed)} cases failed — see 'failed' for details." if failed else "")
+        ),
+    }
 
 @mcp.tool
 def get_run_summary(
@@ -435,6 +629,8 @@ def get_milestone_progress(
         "per_run": per_run,
     }
 
+
+# ── Metrics tools ──────────────────────────────────────────────────────────────
 
 @mcp.tool
 def get_project_health(

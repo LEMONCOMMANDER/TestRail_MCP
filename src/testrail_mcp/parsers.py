@@ -6,9 +6,15 @@ Supported formats:
   gherkin   — Feature/Scenario/Given/When/Then blocks
   markdown  — ## or ### headings as titles, body as BDD content
   numbered  — numbered list items as titles (no step content)
+
+Hierarchy parsing (parse_hierarchy):
+  Reads a structured markdown document and returns a list of HierarchyNode
+  objects representing a two-level section tree (## → ###) with test cases
+  detected from #### headings and **bold-only lines**.
 """
 
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field
 
 
@@ -18,6 +24,22 @@ class ParsedScenario:
     title: str
     bdd_content: str | None = None  # Given/When/Then block
     description: str | None = None  # Free-text description if no BDD steps
+
+
+@dataclass
+class HierarchyNode:
+    """
+    A section node produced by parse_hierarchy.
+
+    level 2 = ## heading  → top-level TestRail section
+    level 3 = ### heading → subsection nested under its parent_name
+    cases holds all test cases detected under this heading before the next
+    same-or-higher heading.
+    """
+    name: str
+    level: int          # 2 or 3
+    parent_name: str | None
+    cases: list[ParsedScenario] = field(default_factory=list)
 
 
 def parse(content: str, fmt: str) -> list[ParsedScenario]:
@@ -137,12 +159,21 @@ def _parse_markdown(content: str) -> list[ParsedScenario]:
     for line in lines:
         stripped = line.strip()
 
+        # ## or ### heading → new scenario title
         if stripped.startswith("## ") or stripped.startswith("### "):
             if current_title:
                 scenarios.append(_build_markdown_scenario(current_title, current_body))
             # Strip leading #s and whitespace
             current_title = stripped.lstrip("#").strip()
             current_body = []
+
+        # **bold-only line** → new scenario title (common in exported docs)
+        elif re.match(r'^\*\*[^*]+\*\*$', stripped):
+            if current_title:
+                scenarios.append(_build_markdown_scenario(current_title, current_body))
+            current_title = stripped[2:-2].strip()
+            current_body = []
+
         elif current_title and stripped:
             current_body.append(stripped)
 
@@ -178,14 +209,93 @@ def _parse_numbered(content: str) -> list[ParsedScenario]:
         2. User cannot log in with invalid password
         3. User is locked out after 5 failed attempts
     """
-    import re
     scenarios: list[ParsedScenario] = []
 
     for line in content.splitlines():
         stripped = line.strip()
-        # Match lines starting with a number followed by . or )
         match = re.match(r"^\d+[.)]\s+(.+)$", stripped)
         if match:
             scenarios.append(ParsedScenario(title=match.group(1).strip()))
 
     return scenarios
+
+
+# ── Hierarchy parser ──────────────────────────────────────────────────────────
+
+def parse_hierarchy(content: str) -> list[HierarchyNode]:
+    """
+    Parse a structured markdown document into a two-level section hierarchy.
+
+    Heading mapping:
+      #   (h1) → ignored (document title)
+      ##  (h2) → top-level TestRail section
+      ### (h3) → subsection nested under the nearest ## section
+
+    Within each section, case titles are detected from:
+      #### headings       — explicit case title marker
+      **bold-only lines** — common in exported / hand-written docs
+
+    BDD step lines (Given/When/Then/And/But) and any other non-blank lines
+    under a case title are collected as the case body.
+
+    Returns a list of HierarchyNode objects in document order.
+    """
+    nodes: list[HierarchyNode] = []
+    # current_h2_name tracks the nearest ## so ### can reference it as parent
+    current_h2_name: str | None = None
+    current_node: HierarchyNode | None = None
+
+    current_case_title: str | None = None
+    current_case_body: list[str] = []
+
+    def _flush_case() -> None:
+        nonlocal current_case_title, current_case_body
+        if current_case_title is not None and current_node is not None:
+            current_node.cases.append(
+                _build_markdown_scenario(current_case_title, current_case_body)
+            )
+        current_case_title = None
+        current_case_body = []
+
+    for line in content.splitlines():
+        stripped = line.strip()
+
+        # ## heading → new top-level section
+        if re.match(r'^## [^#]', stripped):
+            _flush_case()
+            name = stripped[3:].strip()
+            current_h2_name = name
+            node = HierarchyNode(name=name, level=2, parent_name=None)
+            nodes.append(node)
+            current_node = node
+
+        # ### heading → subsection
+        elif re.match(r'^### [^#]', stripped):
+            _flush_case()
+            name = stripped[4:].strip()
+            node = HierarchyNode(name=name, level=3, parent_name=current_h2_name)
+            nodes.append(node)
+            current_node = node
+
+        # #### heading → case title
+        elif re.match(r'^#### ', stripped) and current_node is not None:
+            _flush_case()
+            current_case_title = stripped[5:].strip()
+            current_case_body = []
+
+        # **bold-only line** → case title
+        elif re.match(r'^\*\*[^*]+\*\*$', stripped) and current_node is not None:
+            _flush_case()
+            current_case_title = stripped[2:-2].strip()
+            current_case_body = []
+
+        # Body line for the current case
+        elif current_case_title is not None and stripped:
+            current_case_body.append(stripped)
+
+        # Blank lines and h1 lines (#) are silently skipped
+
+    _flush_case()
+    return nodes
+
+

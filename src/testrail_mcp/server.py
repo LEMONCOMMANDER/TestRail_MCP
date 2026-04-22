@@ -6,11 +6,24 @@ from testrail_mcp.config import Settings
 mcp = FastMCP(
     "TestRail MCP",
     instructions=(
-        "MCP server for interacting with TestRail. Use this server to manage test cases, "
-        "sections, suites, test plans, test runs, and results. You can also import test "
-        "scenarios from markdown or Gherkin files, retrieve pass/fail metrics, and manage "
-        "your full testing workflow. Always use get/list tools before write tools to confirm "
-        "the correct IDs for the target project, suite, and section."
+        "MCP server for interacting with TestRail. "
+        "Use this server to manage test cases, sections, suites, test plans, "
+        "test runs, and results. You can also import test scenarios from markdown "
+        "or Gherkin files, retrieve pass/fail metrics, and manage your full "
+        "testing workflow.\n\n"
+        "IMPORTANT — before starting any task:\n"
+        "1. Call prompts/list to see all available prompt templates. Each prompt "
+        "encodes the correct workflow, field mappings, and rules for common tasks "
+        "(importing scenarios, reporting, triage, case generation). Always prefer "
+        "a matching prompt over ad-hoc tool calls — it will produce better results "
+        "with fewer iterations.\n"
+        "2. If no prompt matches, call tools/list to see all available tools before "
+        "deciding on an approach.\n"
+        "3. When writing or importing test cases, always use get/list tools first "
+        "to confirm the correct IDs for the target project, suite, and section.\n"
+        "4. For importing a structured markdown file (with ## / ### headings), use "
+        "import_from_hierarchy — it auto-creates sections and cases in one call. "
+        "For a flat list of scenarios into one section, use import_scenarios."
     ),
 )
 
