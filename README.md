@@ -233,7 +233,7 @@ This loads the full tool/prompt index before the agent picks an approach, reduci
 
 **Example usage (no prompt template needed):**
 
-> *"Reference instructions.md, then import testing_scenarios.md into the cortado_clone project"*
+> *"Reference instructions.md, then import testing_scenarios.md into the xxxx_clone project"*
 > *"Give me a full health report for the Sample Project"*
 > *"How did the Sprint 5 regression run go?"*
 
